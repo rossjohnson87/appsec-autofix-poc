@@ -20,7 +20,7 @@ def patch_db_sql_injection(fp: Path) -> bool:
     start = txt.find("def get_user_by_email")
     if start == -1:
         return False
-    # find the end of the function: next 'def ' at col 0 or EOF
+    # end of function = next top-level def or EOF
     m = re.search(r"\ndef\s+\w+\(", txt[start+1:])
     end = len(txt) if not m else start + 1 + m.start()
 
@@ -41,7 +41,6 @@ def patch_db_sql_injection(fp: Path) -> bool:
     return True
 
 def ensure_http_imports(txt: str) -> str:
-    # ensure standard lib imports exist
     add = []
     if "import urllib.parse" not in txt:
         add.append("import urllib.parse")
@@ -51,15 +50,12 @@ def ensure_http_imports(txt: str) -> str:
         add.append("import ipaddress")
     if not add:
         return txt
-    # insert after 'import requests'
     lines = txt.splitlines()
-    out = []
-    inserted = False
+    out, inserted = [], False
     for line in lines:
         out.append(line)
         if not inserted and line.strip().startswith("import requests"):
-            for a in add:
-                out.append(a)
+            out.extend(add)
             inserted = True
     if not inserted:
         out = add + [""] + lines
@@ -97,7 +93,6 @@ def patch_http_ssrf(fp: Path) -> bool:
         "                return \"Blocked internal address\", 403\n"
         "        except Exception:\n"
         "            return \"Unresolvable host\", 400\n"
-        "        # Fetch with short timeout\n"
         "        import requests\n"
         "        r = requests.get(url, timeout=3)\n"
         "        return r.text[:2000], r.status_code\n"
@@ -107,7 +102,7 @@ def patch_http_ssrf(fp: Path) -> bool:
 
     new = txt[:start] + safe_impl + txt[end:]
     fp.write_text(new, encoding="utf-8")
-    print(f\"[autofix] SSRF mitigations added in {fp}\")
+    print(f"[autofix] SSRF mitigations added in {fp}")
     return True
 
 def write_tests(dirp: Path) -> bool:
@@ -129,15 +124,15 @@ def write_tests(dirp: Path) -> bool:
         "    assert status in (400, 403)\n"
     )
     test_path.write_text(content, encoding="utf-8")
-    print(f\"[autofix] Added tests -> {test_path}\")
+    print(f"[autofix] Added tests -> {test_path}")
     return True
 
 def semgrep_summary():
     if SEMGR_JSON.exists():
         try:
-            data = json.loads(SEMGR_JSON.read_text(encoding=\"utf-8\"))
-            ids = sorted({r.get(\"check_id\") for r in data.get(\"results\", [])})
-            print(f\"[autofix] semgrep findings: {ids}\")
+            data = json.loads(SEMGR_JSON.read_text(encoding="utf-8"))
+            ids = sorted({r.get("check_id") for r in data.get("results", [])})
+            print(f"[autofix] semgrep findings: {ids}")
         except Exception:
             pass
 
@@ -148,9 +143,9 @@ def main():
     changed |= patch_http_ssrf(HTTP_FILE)
     changed |= write_tests(TESTS_DIR)
     if changed:
-        print(\"[autofix] Changes applied; PR will be opened by the workflow.\")
+        print("[autofix] Changes applied; PR will be opened by the workflow.")
     else:
-        print(\"[autofix] No changes needed; nothing to commit.\")
+        print("[autofix] No changes needed; nothing to commit.")
 
-if __name__ == \"__main__\":
+if __name__ == "__main__":
     main()
