@@ -1,0 +1,7 @@
+# Files the AI autofix can touch must be reviewed by these owners.
+# Adjust paths as your repo grows.
+/app/*                         @rossjohnson87
+/semgrep_rules/*               @rossjohnson87
+/.github/scripts/autofix.py    @rossjohnson87
+/.github/workflows/autofix.yml @rossjohnson87
+/tests/*                       @rossjohnson87
