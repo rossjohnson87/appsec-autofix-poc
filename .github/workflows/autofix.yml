@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,11 +39,28 @@ jobs:
         run: |
           python .github/scripts/autofix.py
 
-      - name: Run tests
+      # 👇 NEW: show whether anything changed
+      - name: Show git status & diff
+        id: diff
+        run: |
+          echo "=== git status ==="
+          git status --porcelain
+          echo "=== names of changed files ==="
+          git diff --name-only || true
+          # set output 'changed' to true if there are staged/unstaged changes
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests (only if changes)
+        if: steps.diff.outputs.changed == 'true'
         run: |
           python -m pytest -q
 
-      - name: Create Pull Request
+      - name: Create Pull Request (only if changes)
+        if: steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           branch: ci/autofix
