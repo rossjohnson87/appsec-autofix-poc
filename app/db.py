@@ -13,11 +13,10 @@ def init_db():
     conn.close()
 
 def get_user_by_email(email: str):
-    # INTENTIONALLY INSECURE: vulnerable to SQL injection
-    q = f"SELECT id, email, name FROM users WHERE email = '{email}'"
+    q = "SELECT id, email, name FROM users WHERE email = ?"
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute(q)
+    cur.execute(q, (email,))
     row = cur.fetchone()
     conn.close()
     return row
