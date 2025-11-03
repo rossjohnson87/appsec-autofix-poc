@@ -1,0 +1,93 @@
+name: Autofix Weekly Scorecard
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * MON"  # Mondays 13:00 UTC (~10:00 São Paulo)
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build scorecard
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { repo, owner } = context.repo;
+            const since = new Date(Date.now() - 7*24*60*60*1000).toISOString();
+
+            // Fetch PRs with label ai-autofix updated in last 7 days
+            const prs = await github.paginate(github.rest.search.issuesAndPullRequests, {
+              q: `repo:${owner}/${repo} is:pr label:ai-autofix updated:>=${since}`
+            });
+
+            if (!prs.length) {
+              core.setOutput('body', `No Autofix PRs in the last 7 days (since ${since}).`);
+            }
+
+            // Compute simple metrics
+            let opened = 0, merged = 0, totalDiff = 0;
+            const rows = [];
+            for (const pr of prs) {
+              if (pr.pull_request) opened++;
+              const prNum = pr.number;
+
+              // Get full PR data
+              const { data } = await github.rest.pulls.get({ owner, repo, pull_number: prNum });
+              if (data.merged_at) merged++;
+
+              // Sum diff (additions+deletions)
+              totalDiff += (data.additions || 0) + (data.deletions || 0);
+
+              rows.push(`| #${prNum} | ${data.merged_at ? "✅ merged" : "⏳ open"} | ${data.additions + data.deletions} | [link](${data.html_url}) |`);
+            }
+
+            const mergeRate = opened ? Math.round(100*merged/opened) : 0;
+            const avgDiff = opened ? Math.round(totalDiff/opened) : 0;
+
+            const body = `
+### Autofix Weekly Scorecard
+Period starting: ${since}
+
+**KPIs**
+- PRs opened: **${opened}**
+- PRs merged: **${merged}**  (merge rate **${mergeRate}%**)
+- Avg diff size (lines): **${avgDiff}**
+
+**PRs**
+| PR | Status | Diff (± lines) | Link |
+|---:|:------:|---------------:|:-----|
+${rows.join("\n")}
+`;
+
+            core.setOutput('body', body);
+
+      - name: Create/Update scorecard issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { repo, owner } = context.repo;
+            const title = "Autofix Weekly Scorecard";
+            const body = core.getInput('body', { required: false }) || 'No data.';
+
+            // Find existing open issue
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: 'ai-autofix-scorecard'
+            });
+
+            if (issues.length) {
+              const issue = issues[0];
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, body
+              });
+              core.info(`Updated issue #${issue.number}`);
+            } else {
+              const { data: issue } = await github.rest.issues.create({
+                owner, repo, title, body, labels: ['ai-autofix-scorecard']
+              });
+              core.info(`Created issue #${issue.number}`);
+            }
