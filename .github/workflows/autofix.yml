@@ -1,0 +1,55 @@
+name: Autofix PR (Semgrep → Safe Patches)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install semgrep pytest
+
+      - name: Run Semgrep (JSON)
+        run: |
+          semgrep --config ./semgrep_rules --json --output semgrep-latest.json || true
+
+      - name: Apply auto-fixes (SQLi + SSRF)
+        run: |
+          python .github/scripts/autofix.py
+
+      - name: Run tests
+        run: |
+          python -m pytest -q
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ci/autofix
+          commit-message: "autofix: apply safe patches for Semgrep findings"
+          title: "Autofix: safe patches for Semgrep findings"
+          body: |
+            Automated fixes for SQLi/SSRF findings.
+            - Based on semgrep rules in ./semgrep_rules
+            - Script: .github/scripts/autofix.py
+            - Includes tests to demonstrate behavior
+          labels: ai-autofix
+          delete-branch: true
